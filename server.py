@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""mtnOS virtual gate kiosk server."""
+
+from __future__ import annotations
+
+import json
+import logging
+import queue
+import sys
+import threading
+import urllib.parse
+import urllib.request
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+import tomllib
+
+ROOT = Path(__file__).parent
+CONFIG_PATH = ROOT / "config.toml"
+STATIC_DIR = ROOT / "web"
+LOG = logging.getLogger("virtual-gate")
+
+
+def load_config() -> dict:
+    with CONFIG_PATH.open("rb") as config_file:
+        config = tomllib.load(config_file)
+    required = ("mntos-server", "control-device")
+    missing = [key for key in required if not config.get(key)]
+    if missing:
+        raise ValueError(f"Missing config values: {', '.join(missing)}")
+    return config
+
+
+class State:
+    def __init__(self) -> None:
+        self._clients: set[queue.Queue[dict]] = set()
+        self._lock = threading.Lock()
+
+    def subscribe(self) -> queue.Queue[dict]:
+        client: queue.Queue[dict] = queue.Queue()
+        with self._lock:
+            self._clients.add(client)
+        return client
+
+    def unsubscribe(self, client: queue.Queue[dict]) -> None:
+        with self._lock:
+            self._clients.discard(client)
+
+    def publish(self, payload: dict) -> None:
+        with self._lock:
+            clients = tuple(self._clients)
+        for client in clients:
+            client.put(payload)
+
+
+def validate_media(media_identifier: str, config: dict) -> dict:
+    query = urllib.parse.urlencode({
+        "deviceIdentifier": config["control-device"],
+        "mediaIdentifier": media_identifier,
+    })
+    url = f"{config['mntos-server'].rstrip('/')}/api/access-control/v2/validation/?{query}"
+    request = urllib.request.Request(url, headers={"Accept": "application/json"})
+    timeout = float(config.get("request-timeout-seconds", 10))
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def scan_loop(config: dict, state: State) -> None:
+    for raw_value in sys.stdin:
+        media_identifier = raw_value.strip()
+        if not media_identifier:
+            continue
+        LOG.info("Validating scanned media identifier %s", media_identifier)
+        state.publish({"type": "scanning", "mediaIdentifier": media_identifier})
+        try:
+            result = validate_media(media_identifier, config)
+            state.publish({"type": "validation", "result": result})
+        except Exception as error:
+            LOG.exception("Validation request failed")
+            state.publish({"type": "error", "message": str(error), "mediaIdentifier": media_identifier})
+
+
+class Handler(BaseHTTPRequestHandler):
+    state: State
+    config: dict
+
+    def do_GET(self) -> None:
+        path = urllib.parse.urlparse(self.path).path
+        if path == "/events":
+            self.send_events()
+        elif path == "/config":
+            self.send_json({"controlDevice": self.config["control-device"], "logo": self.config.get("logo", "")})
+        elif path == "/health":
+            self.send_json({"status": "ok"})
+        else:
+            self.send_static(path)
+
+    def send_events(self) -> None:
+        client = self.state.subscribe()
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.end_headers()
+        try:
+            while True:
+                try:
+                    payload = client.get(timeout=15)
+                    self.wfile.write(f"data: {json.dumps(payload)}\n\n".encode())
+                except queue.Empty:
+                    self.wfile.write(b": keep-alive\n\n")
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            self.state.unsubscribe(client)
+
+    def send_static(self, path: str) -> None:
+        relative_path = "index.html" if path == "/" else path.removeprefix("/")
+        file_path = (STATIC_DIR / relative_path).resolve()
+        if STATIC_DIR not in file_path.parents or not file_path.is_file():
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        content_type = {".html": "text/html", ".css": "text/css", ".js": "text/javascript"}.get(file_path.suffix, "application/octet-stream")
+        body = file_path.read_bytes()
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", f"{content_type}; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_json(self, payload: dict) -> None:
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format: str, *args: object) -> None:
+        LOG.info("%s - %s", self.address_string(), format % args)
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    config = load_config()
+    state = State()
+    Handler.state = state
+    Handler.config = config
+    threading.Thread(target=scan_loop, args=(config, state), daemon=True).start()
+    address = (config.get("listen-host", "0.0.0.0"), int(config.get("listen-port", 8080)))
+    server = ThreadingHTTPServer(address, Handler)
+    LOG.info("Kiosk server listening on http://%s:%s", *address)
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

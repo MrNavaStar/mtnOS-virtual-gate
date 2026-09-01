@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mtnOS Gate</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="gate-shell">
+    <header class="masthead"><img id="logo" alt="" hidden><span id="brand">mtnOS</span><span class="device" id="device"></span></header>
+    <section class="status-panel" id="status-panel" data-state="idle" aria-live="polite">
+      <div class="status-mark" id="status-mark">READY</div>
+      <p class="eyebrow" id="eyebrow">Present access media</p>
+      <h1 id="headline">Scan your RFID media</h1>
+      <p class="detail" id="detail">Waiting for a scan</p>
+      <div class="client" id="client" hidden>
+        <img id="client-photo" alt="Client photo" hidden>
+        <div><strong id="client-name"></strong><span id="client-age"></span><span id="variant"></span></div>
+      </div>
+    </section>
+    <footer><span id="last-scan">No scan yet</span><span>Virtual Gate</span></footer>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
