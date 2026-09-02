@@ -15,6 +15,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import tomllib
 
+from mtnos_client import MtnOSAuthenticationError, MtnOSClient, MtnOSClientError
+
 ROOT = Path(__file__).parent
 CONFIG_PATH = ROOT / "config.toml"
 STATIC_DIR = ROOT / "web"
@@ -53,7 +55,19 @@ class State:
             client.put(payload)
 
 
+def client_id_from_photo_url(photo_url: str | None) -> str | None:
+    if not photo_url:
+        return None
+    path_parts = urllib.parse.urlparse(photo_url).path.strip("/").split("/")
+    try:
+        contact_index = path_parts.index("contact")
+    except ValueError:
+        return None
+    return path_parts[contact_index + 1] if contact_index + 1 < len(path_parts) else None
+
+
 def validate_media(media_identifier: str, config: dict) -> dict:
+    """Validate without authentication, preserving the original gate behavior."""
     query = urllib.parse.urlencode({
         "deviceIdentifier": config["control-device"],
         "mediaIdentifier": media_identifier,
@@ -65,7 +79,47 @@ def validate_media(media_identifier: str, config: dict) -> dict:
         return json.loads(response.read().decode("utf-8"))
 
 
-def scan_loop(config: dict, state: State) -> None:
+def validate_scanned_media(
+    media_identifier: str,
+    config: dict,
+    client: MtnOSClient,
+    *,
+    use_authentication: bool,
+) -> dict:
+    if not use_authentication:
+        return validate_media(media_identifier, config)
+    try:
+        result = client.validate_media(config["control-device"], media_identifier)
+    except MtnOSAuthenticationError:
+        LOG.warning("mtnOS authentication was rejected; using direct validation")
+        return validate_media(media_identifier, config)
+    if result.get("validationCode") != "MEDIA_INACTIVE":
+        return result
+
+    client_id = client_id_from_photo_url(result.get("clientPhotoUrl"))
+    media_id = result.get("mediaId")
+    if not client_id or not media_id:
+        LOG.warning("Inactive media response has no client or media ID")
+        return result
+
+    try:
+        client.set_active_media(client_id, str(media_id))
+        return client.validate_media(config["control-device"], media_identifier)
+    except MtnOSAuthenticationError:
+        LOG.warning("mtnOS authentication expired during activation; using direct validation")
+        return validate_media(media_identifier, config)
+    except MtnOSClientError:
+        LOG.exception("Could not silently activate inactive media %s", media_identifier)
+        return result
+
+
+def scan_loop(
+    config: dict,
+    state: State,
+    client: MtnOSClient,
+    username: str | None,
+    password: str | None,
+) -> None:
     for raw_value in sys.stdin:
         media_identifier = raw_value.strip()
         if not media_identifier:
@@ -73,7 +127,18 @@ def scan_loop(config: dict, state: State) -> None:
         LOG.info("Validating scanned media identifier %s", media_identifier)
         state.publish({"type": "scanning", "mediaIdentifier": media_identifier})
         try:
-            result = validate_media(media_identifier, config)
+            use_authentication = False
+            if username and password:
+                try:
+                    use_authentication = client.login_if_needed(username, password)
+                except MtnOSClientError:
+                    LOG.warning("mtnOS login failed; using direct validation", exc_info=True)
+            result = validate_scanned_media(
+                media_identifier,
+                config,
+                client,
+                use_authentication=use_authentication,
+            )
             state.publish({"type": "validation", "result": result})
         except Exception as error:
             LOG.exception("Validation request failed")
@@ -144,10 +209,26 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     config = load_config()
+    client = MtnOSClient(
+        config["mntos-server"],
+        timeout=float(config.get("request-timeout-seconds", 10)),
+        token_refresh_hours=float(config.get("auth-refresh-hours", 12)),
+    )
+    username = config.get("mntos-username")
+    password = config.get("mntos-password")
+    if username and password:
+        try:
+            client.login_if_needed(username, password)
+        except MtnOSClientError:
+            LOG.warning("Initial mtnOS login failed; using direct validation", exc_info=True)
     state = State()
     Handler.state = state
     Handler.config = config
-    threading.Thread(target=scan_loop, args=(config, state), daemon=True).start()
+    threading.Thread(
+        target=scan_loop,
+        args=(config, state, client, username, password),
+        daemon=True,
+    ).start()
     address = (config.get("listen-host", "0.0.0.0"), int(config.get("listen-port", 8080)))
     server = ThreadingHTTPServer(address, Handler)
     LOG.info("Kiosk server listening on http://%s:%s", *address)

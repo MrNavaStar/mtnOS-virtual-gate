@@ -8,6 +8,8 @@ Edit `config.toml`:
 
 ```toml
 mntos-server = "https://your-mtnos-host"
+mtnos-username = "your-mtnos-username"
+mtnos-password = "your-mtnos-password"
 control-device = "192.168.1.50"
 logo = "/assets/logo.png"
 ```
@@ -29,6 +31,27 @@ chromium --kiosk --noerrdialogs --disable-infobars http://localhost:8080
 ```
 
 The browser receives results over Server-Sent Events. `/health` is available for a service monitor.
+
+Authentication is refreshed automatically every `auth-refresh-hours` (12 by
+default). If credentials are missing, login fails, or mtnOS rejects the token,
+the gate silently falls back to direct validation.
+
+## Python API client
+
+`mtnos_client.py` provides the captured access-control operations:
+
+```python
+from mtnos_client import MtnOSClient
+
+client = MtnOSClient("https://your-mtnos-host")
+client.login("username", "password")
+medias = client.fetch_client_medias("client-id")
+client.set_active_media("client-id", "media-id", current_media_id="current-media-id")
+```
+
+Login uses the Keycloak password-grant endpoint captured separately from the
+HAR files. Login cookies are retained automatically; `access_token` (or
+equivalent token fields) is sent as a Bearer token.
 
 ## systemd
 
