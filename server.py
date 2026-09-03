@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import logging
 import queue
+import socket
 import ssl
 import sys
 import threading
@@ -22,6 +23,11 @@ ROOT = Path(__file__).parent
 CONFIG_PATH = ROOT / "config.toml"
 STATIC_DIR = ROOT / "web"
 LOG = logging.getLogger("virtual-gate")
+
+
+def mdns_hostname() -> str:
+    hostname = socket.gethostname().strip()
+    return hostname if hostname.endswith(".local") else f"{hostname}.local"
 
 
 def ssl_context_from_config(config: dict) -> ssl.SSLContext | None:
@@ -200,7 +206,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/events":
             self.send_events()
         elif path == "/config":
-            self.send_json({"controlDevice": self.config["control-device"], "logo": self.config.get("logo", "")})
+            self.send_json({"hostname": mdns_hostname(), "logo": self.config.get("logo", "")})
         elif path == "/health":
             self.send_json({"status": "ok"})
         else:
