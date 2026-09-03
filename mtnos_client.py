@@ -157,6 +157,12 @@ class MtnOSClient:
         target_serial = self._media_serial(target)
         current_serial = self._media_serial(current)
         LOG.info(
+            "Selected active media for activation: id=%s serial=%s active=%s",
+            current.get("id"),
+            current_serial,
+            current.get("active"),
+        )
+        LOG.info(
             "Sending media activation request for client %s: current media %s -> target media %s",
             client_id,
             current_serial,
@@ -242,10 +248,11 @@ class MtnOSClient:
         if current_media_id is not None:
             return cls._find_media(records, current_media_id)
         for record in records:
-            if record is not target and record.get("activePermission") is not None:
+            if record is not target and record.get("active") is True:
                 return record
         raise MtnOSClientError(
-            "current active media could not be identified; pass current_media_id"
+            "current active media could not be identified from the media active field; "
+            "pass current_media_id"
         )
 
     @staticmethod
