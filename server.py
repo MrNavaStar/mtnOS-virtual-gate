@@ -23,6 +23,27 @@ ROOT = Path(__file__).parent
 CONFIG_PATH = ROOT / "config.toml"
 STATIC_DIR = ROOT / "web"
 LOG = logging.getLogger("virtual-gate")
+LISTEN_HOST = "0.0.0.0"
+LISTEN_PORT = 8080
+LOGO = ""
+
+CONFIG_FIELDS = {
+    "mtnos-server": {"type": "string", "label": "mtnOS server", "secret": False},
+    "mtnos-username": {"type": "string", "label": "mtnOS username", "secret": False},
+    "mtnos-password": {"type": "string", "label": "mtnOS password", "secret": True},
+    "control-device": {"type": "string", "label": "Control device", "secret": False},
+    "tls-verify": {"type": "boolean", "label": "Verify TLS certificates", "secret": False},
+    "tls-ca-file": {"type": "string", "label": "TLS CA file", "secret": False},
+    "request-timeout-seconds": {"type": "number", "label": "Request timeout (seconds)", "secret": False},
+    "auth-refresh-hours": {"type": "number", "label": "Auth refresh (hours)", "secret": False},
+}
+CONFIG_CATEGORIES = [
+    {"key": "mtnos", "label": "mtnOS connection", "fields": [
+        "mtnos-server", "control-device", "mtnos-username", "mtnos-password",
+    ]},
+    {"key": "security", "label": "Security", "fields": ["tls-verify", "tls-ca-file"]},
+    {"key": "timing", "label": "Timing", "fields": ["request-timeout-seconds", "auth-refresh-hours"]},
+]
 
 
 def mdns_hostname() -> str:
@@ -51,6 +72,50 @@ def load_config() -> dict:
     if missing:
         raise ValueError(f"Missing config values: {', '.join(missing)}")
     return config
+
+
+def toml_value(value: object) -> str:
+    if isinstance(value, str):
+        return json.dumps(value)
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    raise ValueError("unsupported config value")
+
+
+def save_config(config: dict) -> None:
+    lines = [f"{key} = {toml_value(config[key])}" for key in CONFIG_FIELDS if key in config]
+    temporary_path = CONFIG_PATH.with_suffix(".toml.tmp")
+    temporary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    temporary_path.replace(CONFIG_PATH)
+
+
+def validate_config_payload(payload: object, current: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("config must be an object")
+    updated = {}
+    for key, field in CONFIG_FIELDS.items():
+        if key not in payload:
+            continue
+        value = payload[key]
+        expected_type = field["type"]
+        if expected_type == "string" and not isinstance(value, str):
+            raise ValueError(f"{key} must be a string")
+        if expected_type == "boolean" and not isinstance(value, bool):
+            raise ValueError(f"{key} must be a boolean")
+        if expected_type == "integer" and (not isinstance(value, int) or isinstance(value, bool)):
+            raise ValueError(f"{key} must be an integer")
+        if expected_type == "number" and (not isinstance(value, (int, float)) or isinstance(value, bool)):
+            raise ValueError(f"{key} must be a number")
+        updated[key] = value
+    unknown = set(payload) - set(CONFIG_FIELDS)
+    if unknown:
+        raise ValueError(f"unknown config option: {sorted(unknown)[0]}")
+    for required in ("mtnos-server", "control-device"):
+        if not updated.get(required, current.get(required)):
+            raise ValueError(f"{required} is required")
+    return updated
 
 
 class State:
@@ -206,11 +271,29 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/events":
             self.send_events()
         elif path == "/config":
-            self.send_json({"hostname": mdns_hostname(), "logo": self.config.get("logo", "")})
+            self.send_json({"hostname": mdns_hostname(), "logo": LOGO})
         elif path == "/health":
             self.send_json({"status": "ok"})
+        elif path == "/admin/config":
+            self.send_json({"categories": CONFIG_CATEGORIES, "fields": CONFIG_FIELDS, "values": self.config})
         else:
             self.send_static(path)
+
+    def do_POST(self) -> None:
+        path = urllib.parse.urlparse(self.path).path
+        if path != "/admin/config":
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            payload = json.loads(self.rfile.read(length))
+            updates = validate_config_payload(payload, self.config)
+            candidate = {**self.config, **updates}
+            save_config(candidate)
+            self.config.update(updates)
+            self.send_json({"status": "saved", "values": self.config})
+        except (ValueError, json.JSONDecodeError, OSError) as error:
+            self.send_json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
 
     def send_events(self) -> None:
         client = self.state.subscribe()
@@ -233,7 +316,7 @@ class Handler(BaseHTTPRequestHandler):
             self.state.unsubscribe(client)
 
     def send_static(self, path: str) -> None:
-        relative_path = "index.html" if path == "/" else path.removeprefix("/")
+        relative_path = {"/": "index.html", "/admin": "admin.html"}.get(path, path.removeprefix("/"))
         file_path = (STATIC_DIR / relative_path).resolve()
         if STATIC_DIR not in file_path.parents or not file_path.is_file():
             self.send_error(HTTPStatus.NOT_FOUND)
@@ -246,9 +329,9 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def send_json(self, payload: dict) -> None:
+    def send_json(self, payload: dict, *, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload).encode("utf-8")
-        self.send_response(HTTPStatus.OK)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -286,7 +369,7 @@ def main() -> None:
         args=(config, state, client, username, password),
         daemon=True,
     ).start()
-    address = (config.get("listen-host", "0.0.0.0"), int(config.get("listen-port", 8080)))
+    address = (LISTEN_HOST, LISTEN_PORT)
     server = ThreadingHTTPServer(address, Handler)
     LOG.info("Kiosk server listening on http://%s:%s", *address)
     server.serve_forever()

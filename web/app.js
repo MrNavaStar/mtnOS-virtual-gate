@@ -3,7 +3,14 @@ const mark = document.querySelector("#status-mark");
 const eyebrow = document.querySelector("#eyebrow");
 const headline = document.querySelector("#headline");
 const detail = document.querySelector("#detail");
+const gateStatus = document.querySelector("#gate-status");
+const gateStatusText = document.querySelector("#gate-status-text");
 let idleTimer = null;
+
+function setGateStatus(state, text) {
+  gateStatus.dataset.state = state;
+  gateStatusText.textContent = text;
+}
 
 function scheduleIdleReset() {
   if (idleTimer) clearTimeout(idleTimer);
@@ -17,6 +24,7 @@ function scheduleIdleReset() {
 }
 
 function showScanning() {
+  setGateStatus("scanning", "Checking");
   panel.dataset.state = "scanning";
   mark.textContent = "CHECKING";
   eyebrow.textContent = "Card detected";
@@ -26,6 +34,7 @@ function showScanning() {
 
 function showResult(result) {
   const valid = result.valid === true;
+  setGateStatus(valid ? "valid" : "denied", valid ? "Authenticated" : "Not authenticated");
   panel.dataset.state = valid ? "valid" : "denied";
   mark.textContent = valid ? "GOOD TO GO" : "CARD NOT VALID";
   eyebrow.textContent = valid ? "Access confirmed" : "Please contact customer service";
@@ -39,6 +48,7 @@ function showResult(result) {
 }
 
 function showError() {
+  setGateStatus("error", "Unavailable");
   panel.dataset.state = "error";
   mark.textContent = "UNAVAILABLE";
   eyebrow.textContent = "Validation request failed";
@@ -66,6 +76,7 @@ function connectEvents() {
   events = new EventSource("/events");
   events.onopen = () => {
     if (document.querySelector("#status-panel").dataset.state === "error") {
+      setGateStatus("idle", "Awaiting scan");
       const panel = document.querySelector("#status-panel");
       panel.dataset.state = "scanning";
       mark.textContent = "CHECKING";
