@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import logging
 import queue
+import ssl
 import sys
 import threading
 import urllib.parse
@@ -21,6 +22,19 @@ ROOT = Path(__file__).parent
 CONFIG_PATH = ROOT / "config.toml"
 STATIC_DIR = ROOT / "web"
 LOG = logging.getLogger("virtual-gate")
+
+
+def ssl_context_from_config(config: dict) -> ssl.SSLContext | None:
+    """Build an SSL context that honors a self-signed certificate when configured."""
+    ca_file = config.get("tls-ca-file")
+    if ca_file:
+        return ssl.create_default_context(cafile=str(ca_file))
+    if config.get("tls-verify", True) is False:
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        return context
+    return None
 
 
 def load_config() -> dict:
@@ -75,7 +89,13 @@ def validate_media(media_identifier: str, config: dict) -> dict:
     url = f"{config['mntos-server'].rstrip('/')}/api/access-control/v2/validation/?{query}"
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     timeout = float(config.get("request-timeout-seconds", 10))
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    context = ssl_context_from_config(config)
+    opener = (
+        urllib.request.build_opener(urllib.request.HTTPSHandler(context=context))
+        if context is not None
+        else urllib.request.build_opener()
+    )
+    with opener.open(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
@@ -213,6 +233,7 @@ def main() -> None:
         config["mntos-server"],
         timeout=float(config.get("request-timeout-seconds", 10)),
         token_refresh_hours=float(config.get("auth-refresh-hours", 12)),
+        context=ssl_context_from_config(config),
     )
     username = config.get("mntos-username")
     password = config.get("mntos-password")

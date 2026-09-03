@@ -12,9 +12,11 @@ mtnos-username = "your-mtnos-username"
 mtnos-password = "your-mtnos-password"
 control-device = "192.168.1.50"
 logo = "/assets/logo.png"
+# Set to false when the server is using a self-signed certificate.
+tls-verify = true
 ```
 
-The scanner must operate as a USB keyboard and append Enter after each scan. `mntos-server` is used as the API base URL and `control-device` is sent as `deviceIdentifier`.
+The scanner must operate as a USB keyboard and append Enter after each scan. `mntos-server` is used as the API base URL and `control-device` is sent as `deviceIdentifier`. If the mtnOS instance uses a self-signed certificate, set `tls-verify = false` to trust it for local kiosk deployments.
 
 ## Run
 

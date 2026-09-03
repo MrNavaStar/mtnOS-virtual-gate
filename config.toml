@@ -4,6 +4,8 @@ mtnos-username = "USERNAME"
 mtnos-password = "PASSWORD"
 control-device = "GATE_IP"
 logo = ""
+# Set to false when the mtnOS server uses a self-signed certificate.
+tls-verify = false
 
 listen-host = "0.0.0.0"
 listen-port = 8080
