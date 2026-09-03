@@ -256,7 +256,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     config = load_config()
     client = MtnOSClient(
-        config["mntos-server"],
+        config["mtnos-server"],
         timeout=float(config.get("request-timeout-seconds", 10)),
         token_refresh_hours=float(config.get("auth-refresh-hours", 12)),
         context=ssl_context_from_config(config),
