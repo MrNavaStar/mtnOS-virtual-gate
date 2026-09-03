@@ -203,7 +203,7 @@ class Handler(BaseHTTPRequestHandler):
                 except queue.Empty:
                     self.wfile.write(b": keep-alive\n\n")
                 self.wfile.flush()
-        except (BrokenPipeError, ConnectionResetError):
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
             pass
         finally:
             self.state.unsubscribe(client)

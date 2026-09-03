@@ -4,6 +4,24 @@ const eyebrow = document.querySelector("#eyebrow");
 const headline = document.querySelector("#headline");
 const detail = document.querySelector("#detail");
 const client = document.querySelector("#client");
+let idleTimer = null;
+
+function scheduleIdleReset() {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    panel.dataset.state = "idle";
+    mark.textContent = "READY";
+    eyebrow.textContent = "Waiting for scan";
+    headline.textContent = "Present media to validate";
+    detail.textContent = "";
+    document.querySelector("#client-age").textContent = "";
+    document.querySelector("#variant").textContent = "";
+    document.querySelector("#client-name").textContent = "";
+    const photo = document.querySelector("#client-photo");
+    photo.hidden = true;
+    client.hidden = true;
+  }, 5000);
+}
 
 function showScanning(id) {
   panel.dataset.state = "scanning";
@@ -29,6 +47,7 @@ function showResult(result) {
   const photo = document.querySelector("#client-photo");
   photo.hidden = !result.clientPhotoUrl;
   if (result.clientPhotoUrl) photo.src = result.clientPhotoUrl;
+  scheduleIdleReset();
 }
 
 function showError(message) {
@@ -38,6 +57,7 @@ function showError(message) {
   headline.textContent = "Please try again";
   detail.textContent = message;
   client.hidden = true;
+  if (idleTimer) clearTimeout(idleTimer);
 }
 
 fetch("/config").then(response => response.json()).then(config => {
@@ -50,11 +70,49 @@ fetch("/config").then(response => response.json()).then(config => {
   }
 }).catch(() => showError("Kiosk configuration is unavailable"));
 
-const events = new EventSource("/events");
-events.onmessage = ({ data }) => {
-  const event = JSON.parse(data);
-  if (event.type === "scanning") showScanning(event.mediaIdentifier);
-  if (event.type === "validation") showResult(event.result);
-  if (event.type === "error") showError(event.message);
-};
-events.onerror = () => showError("Connection to the gate server was lost");
+let events;
+
+function connectEvents() {
+  if (events) {
+    events.close();
+  }
+
+  events = new EventSource("/events");
+  events.onopen = () => {
+    if (document.querySelector("#status-panel").dataset.state === "error") {
+      const panel = document.querySelector("#status-panel");
+      panel.dataset.state = "scanning";
+      mark.textContent = "CHECKING";
+      eyebrow.textContent = "Reconnected";
+      headline.textContent = "Listening for scans";
+      detail.textContent = "Connection restored.";
+    }
+  };
+
+  events.onmessage = ({ data }) => {
+    const event = JSON.parse(data);
+    if (event.type === "scanning") {
+      showScanning(event.mediaIdentifier);
+      if (idleTimer) clearTimeout(idleTimer);
+    }
+    if (event.type === "validation") showResult(event.result);
+    if (event.type === "error") showError(event.message);
+  };
+
+  events.onerror = () => {
+    const panel = document.querySelector("#status-panel");
+    if (events.readyState === EventSource.CONNECTING) {
+      panel.dataset.state = "error";
+      mark.textContent = "RECONNECTING";
+      eyebrow.textContent = "Connection issue";
+      headline.textContent = "Re-establishing link";
+      detail.textContent = "Trying to reconnect to the gate server...";
+      setTimeout(connectEvents, 2000);
+    } else if (events.readyState === EventSource.CLOSED) {
+      showError("Connection to the gate server was lost");
+      setTimeout(connectEvents, 2000);
+    }
+  };
+}
+
+connectEvents();
