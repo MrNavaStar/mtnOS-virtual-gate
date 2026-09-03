@@ -38,6 +38,7 @@ CONFIG_FIELDS = {
     "auth-refresh-hours": {"type": "number", "label": "Auth refresh (hours)", "secret": False},
 }
 CONFIG_CATEGORIES = [
+<<<<<<< Updated upstream
     {"key": "mtnos", "label": "mtnOS connection", "fields": [
         "mtnos-server", "control-device", "mtnos-username", "mtnos-password",
     ]},
@@ -49,6 +50,12 @@ CONFIG_CATEGORIES = [
 def mdns_hostname() -> str:
     hostname = socket.gethostname().strip()
     return hostname if hostname.endswith(".local") else f"{hostname}.local"
+=======
+    {"key": "mtnos", "label": "mtnOS connection", "fields": ["mtnos-server", "control-device", "mtnos-username", "mtnos-password"]},
+    {"key": "security", "label": "Security", "fields": ["tls-verify", "tls-ca-file"]},
+    {"key": "timing", "label": "Timing", "fields": ["request-timeout-seconds", "auth-refresh-hours"]},
+]
+>>>>>>> Stashed changes
 
 
 def ssl_context_from_config(config: dict) -> ssl.SSLContext | None:
@@ -85,21 +92,32 @@ def toml_value(value: object) -> str:
 
 
 def save_config(config: dict) -> None:
+<<<<<<< Updated upstream
     lines = [f"{key} = {toml_value(config[key])}" for key in CONFIG_FIELDS if key in config]
     temporary_path = CONFIG_PATH.with_suffix(".toml.tmp")
     temporary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+=======
+    contents = "\n".join(f"{key} = {toml_value(config[key])}" for key in CONFIG_FIELDS if key in config) + "\n"
+    temporary_path = CONFIG_PATH.with_suffix(".toml.tmp")
+    temporary_path.write_text(contents, encoding="utf-8")
+>>>>>>> Stashed changes
     temporary_path.replace(CONFIG_PATH)
 
 
 def validate_config_payload(payload: object, current: dict) -> dict:
     if not isinstance(payload, dict):
         raise ValueError("config must be an object")
+<<<<<<< Updated upstream
     updated = {}
+=======
+    updates = {}
+>>>>>>> Stashed changes
     for key, field in CONFIG_FIELDS.items():
         if key not in payload:
             continue
         value = payload[key]
         expected_type = field["type"]
+<<<<<<< Updated upstream
         if expected_type == "string" and not isinstance(value, str):
             raise ValueError(f"{key} must be a string")
         if expected_type == "boolean" and not isinstance(value, bool):
@@ -109,13 +127,47 @@ def validate_config_payload(payload: object, current: dict) -> dict:
         if expected_type == "number" and (not isinstance(value, (int, float)) or isinstance(value, bool)):
             raise ValueError(f"{key} must be a number")
         updated[key] = value
+=======
+        valid = (
+            isinstance(value, str) if expected_type == "string" else
+            isinstance(value, bool) if expected_type == "boolean" else
+            isinstance(value, int) and not isinstance(value, bool) if expected_type == "integer" else
+            isinstance(value, (int, float)) and not isinstance(value, bool)
+        )
+        if not valid:
+            raise ValueError(f"{key} must be a {expected_type}")
+        updates[key] = value
+>>>>>>> Stashed changes
     unknown = set(payload) - set(CONFIG_FIELDS)
     if unknown:
         raise ValueError(f"unknown config option: {sorted(unknown)[0]}")
     for required in ("mtnos-server", "control-device"):
+<<<<<<< Updated upstream
         if not updated.get(required, current.get(required)):
             raise ValueError(f"{required} is required")
     return updated
+=======
+        if not updates.get(required, current.get(required)):
+            raise ValueError(f"{required} is required")
+    return updates
+
+
+class ConfigStore:
+    def __init__(self, config: dict) -> None:
+        self._config = dict(config)
+        self._lock = threading.RLock()
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            return dict(self._config)
+
+    def update(self, updates: dict) -> dict:
+        with self._lock:
+            candidate = {**self._config, **updates}
+            save_config(candidate)
+            self._config = candidate
+            return dict(candidate)
+>>>>>>> Stashed changes
 
 
 class State:
@@ -187,19 +239,19 @@ def validate_scanned_media(
     client: MtnOSClient,
     *,
     use_authentication: bool,
-) -> dict:
+) -> tuple[dict, bool]:
     if not use_authentication:
         LOG.info("Validating %s without mtnOS authentication", media_identifier)
-        return validate_media(media_identifier, config)
+        return validate_media(media_identifier, config), False
     try:
         LOG.info("Validating %s with mtnOS authentication", media_identifier)
         result = client.validate_media(config["control-device"], media_identifier)
     except MtnOSAuthenticationError:
         LOG.warning("mtnOS authentication was rejected; using direct validation")
-        return validate_media(media_identifier, config)
+        return validate_media(media_identifier, config), False
     if result.get("validationCode") != "MEDIA_INACTIVE":
         LOG.info("Authenticated validation completed for %s: validationCode=%s", media_identifier, result.get("validationCode"))
-        return result
+        return result, True
 
     LOG.info("Media %s is inactive; attempting activation", media_identifier)
 
@@ -207,28 +259,26 @@ def validate_scanned_media(
     media_id = result.get("mediaId")
     if not client_id or not media_id:
         LOG.warning("Inactive media response has no client or media ID")
-        return result
+        return result, True
 
     try:
         client.set_active_media(client_id, str(media_id))
         LOG.info("Media activation request succeeded for %s; validating again", media_identifier)
         result = client.validate_media(config["control-device"], media_identifier)
         LOG.info("Post-activation validation completed for %s: validationCode=%s", media_identifier, result.get("validationCode"))
-        return result
+        return result, True
     except MtnOSAuthenticationError:
         LOG.warning("mtnOS authentication expired during activation; using direct validation")
-        return validate_media(media_identifier, config)
+        return validate_media(media_identifier, config), False
     except MtnOSClientError:
         LOG.exception("Could not silently activate inactive media %s", media_identifier)
-        return result
+        return result, True
 
 
 def scan_loop(
-    config: dict,
+    config_store: ConfigStore,
     state: State,
     client: MtnOSClient,
-    username: str | None,
-    password: str | None,
 ) -> None:
     for raw_value in sys.stdin:
         media_identifier = normalize_media_identifier(raw_value)
@@ -237,6 +287,17 @@ def scan_loop(
         LOG.info("Validating scanned media identifier %s", media_identifier)
         state.publish({"type": "scanning", "mediaIdentifier": media_identifier})
         try:
+            config = config_store.snapshot()
+            username = config.get("mtnos-username")
+            password = config.get("mtnos-password")
+            client.configure(
+                config["mtnos-server"],
+                timeout=float(config.get("request-timeout-seconds", 10)),
+                token_refresh_hours=float(config.get("auth-refresh-hours", 12)),
+                context=ssl_context_from_config(config),
+                context_key=(config.get("tls-verify", True), config.get("tls-ca-file")),
+                auth_key=(config.get("mtnos-username"), config.get("mtnos-password")),
+            )
             use_authentication = False
             if username and password:
                 try:
@@ -244,13 +305,13 @@ def scan_loop(
                     LOG.info("mtnOS authentication is available for scan: %s", use_authentication)
                 except MtnOSClientError:
                     LOG.warning("mtnOS login failed; using direct validation", exc_info=True)
-            result = validate_scanned_media(
+            result, authenticated = validate_scanned_media(
                 media_identifier,
                 config,
                 client,
                 use_authentication=use_authentication,
             )
-            state.publish({"type": "validation", "result": result})
+            state.publish({"type": "validation", "result": result, "authenticated": authenticated})
         except Exception as error:
             LOG.exception("Validation request failed")
             state.publish({"type": "error", "message": str(error), "mediaIdentifier": media_identifier})
@@ -258,7 +319,7 @@ def scan_loop(
 
 class Handler(BaseHTTPRequestHandler):
     state: State
-    config: dict
+    config_store: ConfigStore
 
     def handle_one_request(self) -> None:
         try:
@@ -268,30 +329,49 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = urllib.parse.urlparse(self.path).path
+        config = self.config_store.snapshot()
         if path == "/events":
             self.send_events()
         elif path == "/config":
+<<<<<<< Updated upstream
             self.send_json({"hostname": mdns_hostname(), "logo": LOGO})
         elif path == "/health":
             self.send_json({"status": "ok"})
         elif path == "/admin/config":
             self.send_json({"categories": CONFIG_CATEGORIES, "fields": CONFIG_FIELDS, "values": self.config})
+=======
+            self.send_json({"controlDevice": config["control-device"], "logo": LOGO})
+        elif path == "/health":
+            self.send_json({"status": "ok"})
+        elif path == "/admin/config":
+            self.send_json({"categories": CONFIG_CATEGORIES, "fields": CONFIG_FIELDS, "values": config})
+>>>>>>> Stashed changes
         else:
             self.send_static(path)
 
     def do_POST(self) -> None:
+<<<<<<< Updated upstream
         path = urllib.parse.urlparse(self.path).path
         if path != "/admin/config":
+=======
+        if urllib.parse.urlparse(self.path).path != "/admin/config":
+>>>>>>> Stashed changes
             self.send_error(HTTPStatus.NOT_FOUND)
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(length))
+<<<<<<< Updated upstream
             updates = validate_config_payload(payload, self.config)
             candidate = {**self.config, **updates}
             save_config(candidate)
             self.config.update(updates)
             self.send_json({"status": "saved", "values": self.config})
+=======
+            current = self.config_store.snapshot()
+            updates = validate_config_payload(payload, current)
+            self.send_json({"status": "saved", "values": self.config_store.update(updates)})
+>>>>>>> Stashed changes
         except (ValueError, json.JSONDecodeError, OSError) as error:
             self.send_json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
 
@@ -344,6 +424,7 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     config = load_config()
+    config_store = ConfigStore(config)
     client = MtnOSClient(
         config["mtnos-server"],
         timeout=float(config.get("request-timeout-seconds", 10)),
@@ -363,10 +444,10 @@ def main() -> None:
         LOG.warning("mtnOS credentials are not configured; using direct validation")
     state = State()
     Handler.state = state
-    Handler.config = config
+    Handler.config_store = config_store
     threading.Thread(
         target=scan_loop,
-        args=(config, state, client, username, password),
+        args=(config_store, state, client),
         daemon=True,
     ).start()
     address = (LISTEN_HOST, LISTEN_PORT)

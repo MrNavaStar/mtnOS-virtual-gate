@@ -36,6 +36,9 @@ Saving updates `config.toml`; restart the server afterward to apply changes.
 
 The browser receives results over Server-Sent Events. `/health` is available for a service monitor.
 
+Open `http://localhost:8080/admin` to edit settings. Changes are written to
+`config.toml` and apply to the next scan without restarting the server.
+
 Authentication is refreshed automatically every `auth-refresh-hours` (12 by
 default). If credentials are missing, login fails, or mtnOS rejects the token,
 the gate silently falls back to direct validation.

@@ -5,6 +5,9 @@ mtnos-password = "PASSWORD"
 control-device = "GATE_IP"
 # Set to false when the mtnOS server uses a self-signed certificate.
 tls-verify = false
+<<<<<<< Updated upstream
 tls-ca-file = ""
+=======
+>>>>>>> Stashed changes
 request-timeout-seconds = 10
 auth-refresh-hours = 12

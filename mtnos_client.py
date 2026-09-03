@@ -45,12 +45,42 @@ class MtnOSClient:
             handlers.insert(0, urllib.request.HTTPSHandler(context=context))
         self._opener = urllib.request.build_opener(*handlers)
         self._context = context
+        self._context_key = None
+        self._auth_key = None
         self._authorization: str | None = None
         self._logged_in_at: float | None = None
 
     @property
     def authenticated(self) -> bool:
         return self._authorization is not None
+
+    def configure(
+        self,
+        base_url: str,
+        *,
+        timeout: float = 10,
+        token_refresh_hours: float = 12,
+        context: ssl.SSLContext | None = None,
+        context_key: tuple[object, ...] | None = None,
+        auth_key: tuple[object, ...] | None = None,
+    ) -> None:
+        """Apply current server settings before the next request."""
+        changed_connection = base_url.rstrip("/") != self.base_url or context_key != self._context_key
+        changed_authentication = auth_key != self._auth_key
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.token_refresh_seconds = token_refresh_hours * 60 * 60
+        if changed_connection:
+            handlers: list[Any] = [http.cookiejar.HTTPCookieProcessor(self._cookies)]
+            if context is not None:
+                handlers.insert(0, urllib.request.HTTPSHandler(context=context))
+            self._opener = urllib.request.build_opener(*handlers)
+            self._context = context
+            self._context_key = context_key
+        if changed_connection or changed_authentication:
+            self._authorization = None
+            self._logged_in_at = None
+        self._auth_key = auth_key
 
     def login_if_needed(self, username: str, password: str) -> bool:
         """Refresh the token when it is absent or older than the configured interval."""
