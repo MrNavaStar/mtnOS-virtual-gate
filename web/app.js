@@ -3,7 +3,6 @@ const mark = document.querySelector("#status-mark");
 const eyebrow = document.querySelector("#eyebrow");
 const headline = document.querySelector("#headline");
 const detail = document.querySelector("#detail");
-const client = document.querySelector("#client");
 let idleTimer = null;
 
 function scheduleIdleReset() {
@@ -14,23 +13,15 @@ function scheduleIdleReset() {
     eyebrow.textContent = "Present your access card";
     headline.textContent = "Scan to access the mountain.";
     detail.textContent = "Hold your RFID card near the reader to get started.";
-    document.querySelector("#client-age").textContent = "";
-    document.querySelector("#variant").textContent = "";
-    document.querySelector("#client-name").textContent = "";
-    const photo = document.querySelector("#client-photo");
-    photo.hidden = true;
-    client.hidden = true;
   }, 5000);
 }
 
-function showScanning(id) {
+function showScanning() {
   panel.dataset.state = "scanning";
   mark.textContent = "CHECKING";
   eyebrow.textContent = "Card detected";
-  headline.textContent = id;
+  headline.textContent = "Checking your access.";
   detail.textContent = "Checking your access...";
-  client.hidden = true;
-  document.querySelector("#last-scan").textContent = `Last scan: ${id}`;
 }
 
 function showResult(result) {
@@ -38,27 +29,21 @@ function showResult(result) {
   panel.dataset.state = valid ? "valid" : "denied";
   mark.textContent = valid ? "GOOD TO GO" : "CARD NOT VALID";
   eyebrow.textContent = valid ? "Access confirmed" : "Please contact customer service";
-  headline.textContent = result.clientName || result.mediaIdentifier || "Unknown media";
+  headline.textContent = valid
+    ? "You're all set!"
+    : "Please visit customer service.";
   detail.textContent = valid
-    ? "You're all set. Have a great day on the mountain!"
-    : "Please visit customer service so we can resolve this before you head up.";
-  document.querySelector("#client-age").textContent = result.clientAge == null ? "" : `${result.clientAge} years`;
-  document.querySelector("#variant").textContent = result.variantName || "";
-  document.querySelector("#client-name").textContent = result.clientName || "";
-  client.hidden = !result.clientName && result.clientAge == null && !result.variantName;
-  const photo = document.querySelector("#client-photo");
-  photo.hidden = !result.clientPhotoUrl;
-  if (result.clientPhotoUrl) photo.src = result.clientPhotoUrl;
+    ? "Have a great day on the mountain!"
+    : "Our team can help resolve your card issue.";
   scheduleIdleReset();
 }
 
-function showError(message) {
+function showError() {
   panel.dataset.state = "error";
   mark.textContent = "UNAVAILABLE";
   eyebrow.textContent = "Validation request failed";
   headline.textContent = "Please try again";
-  detail.textContent = message;
-  client.hidden = true;
+  detail.textContent = "Please wait a moment and try again.";
   if (idleTimer) clearTimeout(idleTimer);
 }
 
@@ -93,7 +78,7 @@ function connectEvents() {
   events.onmessage = ({ data }) => {
     const event = JSON.parse(data);
     if (event.type === "scanning") {
-      showScanning(event.mediaIdentifier);
+      showScanning();
       if (idleTimer) clearTimeout(idleTimer);
     }
     if (event.type === "validation") showResult(event.result);
