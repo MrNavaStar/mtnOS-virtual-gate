@@ -90,6 +90,7 @@ def client_id_from_photo_url(photo_url: str | None) -> str | None:
 
 def validate_media(media_identifier: str, config: dict) -> dict:
     """Validate without authentication, preserving the original gate behavior."""
+    LOG.info("Starting direct media validation for %s", media_identifier)
     query = urllib.parse.urlencode({
         "deviceIdentifier": config["control-device"],
         "mediaIdentifier": media_identifier,
@@ -104,7 +105,9 @@ def validate_media(media_identifier: str, config: dict) -> dict:
         else urllib.request.build_opener()
     )
     with opener.open(request, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
+        result = json.loads(response.read().decode("utf-8"))
+        LOG.info("Direct media validation succeeded for %s: validationCode=%s", media_identifier, result.get("validationCode"))
+        return result
 
 
 def validate_scanned_media(
@@ -115,14 +118,19 @@ def validate_scanned_media(
     use_authentication: bool,
 ) -> dict:
     if not use_authentication:
+        LOG.info("Validating %s without mtnOS authentication", media_identifier)
         return validate_media(media_identifier, config)
     try:
+        LOG.info("Validating %s with mtnOS authentication", media_identifier)
         result = client.validate_media(config["control-device"], media_identifier)
     except MtnOSAuthenticationError:
         LOG.warning("mtnOS authentication was rejected; using direct validation")
         return validate_media(media_identifier, config)
     if result.get("validationCode") != "MEDIA_INACTIVE":
+        LOG.info("Authenticated validation completed for %s: validationCode=%s", media_identifier, result.get("validationCode"))
         return result
+
+    LOG.info("Media %s is inactive; attempting activation", media_identifier)
 
     client_id = client_id_from_photo_url(result.get("clientPhotoUrl"))
     media_id = result.get("mediaId")
@@ -132,7 +140,10 @@ def validate_scanned_media(
 
     try:
         client.set_active_media(client_id, str(media_id))
-        return client.validate_media(config["control-device"], media_identifier)
+        LOG.info("Media activation request succeeded for %s; validating again", media_identifier)
+        result = client.validate_media(config["control-device"], media_identifier)
+        LOG.info("Post-activation validation completed for %s: validationCode=%s", media_identifier, result.get("validationCode"))
+        return result
     except MtnOSAuthenticationError:
         LOG.warning("mtnOS authentication expired during activation; using direct validation")
         return validate_media(media_identifier, config)
@@ -159,6 +170,7 @@ def scan_loop(
             if username and password:
                 try:
                     use_authentication = client.login_if_needed(username, password)
+                    LOG.info("mtnOS authentication is available for scan: %s", use_authentication)
                 except MtnOSClientError:
                     LOG.warning("mtnOS login failed; using direct validation", exc_info=True)
             result = validate_scanned_media(
