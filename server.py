@@ -177,6 +177,12 @@ class Handler(BaseHTTPRequestHandler):
     state: State
     config: dict
 
+    def handle_one_request(self) -> None:
+        try:
+            super().handle_one_request()
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError, OSError):
+            pass
+
     def do_GET(self) -> None:
         path = urllib.parse.urlparse(self.path).path
         if path == "/events":
