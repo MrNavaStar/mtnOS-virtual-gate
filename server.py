@@ -264,10 +264,14 @@ def main() -> None:
     username = config.get("mntos-username")
     password = config.get("mntos-password")
     if username and password:
+        LOG.info("mtnOS credentials configured; attempting initial login")
         try:
-            client.login_if_needed(username, password)
+            authenticated = client.login_if_needed(username, password)
+            LOG.info("Initial mtnOS login completed; authenticated=%s", authenticated)
         except MtnOSClientError:
             LOG.warning("Initial mtnOS login failed; using direct validation", exc_info=True)
+    else:
+        LOG.warning("mtnOS credentials are not configured; using direct validation")
     state = State()
     Handler.state = state
     Handler.config = config
