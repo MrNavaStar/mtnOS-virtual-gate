@@ -11,7 +11,6 @@ mntos-server = "https://your-mtnos-host"
 mtnos-username = "your-mtnos-username"
 mtnos-password = "your-mtnos-password"
 control-device = "192.168.1.50"
-logo = "/assets/logo.png"
 # Set to false when the server is using a self-signed certificate.
 tls-verify = true
 ```
@@ -31,6 +30,9 @@ Open `http://localhost:8080` in Chromium. For a fullscreen kiosk session:
 ```sh
 chromium --kiosk --noerrdialogs --disable-infobars http://localhost:8080
 ```
+
+Open `http://localhost:8080/admin` to edit the typed configuration in a browser.
+Saving updates `config.toml`; restart the server afterward to apply changes.
 
 The browser receives results over Server-Sent Events. `/health` is available for a service monitor.
 
