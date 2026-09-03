@@ -11,9 +11,9 @@ function scheduleIdleReset() {
   idleTimer = setTimeout(() => {
     panel.dataset.state = "idle";
     mark.textContent = "READY";
-    eyebrow.textContent = "Waiting for scan";
-    headline.textContent = "Present media to validate";
-    detail.textContent = "";
+    eyebrow.textContent = "Present your access card";
+    headline.textContent = "Scan to access the mountain.";
+    detail.textContent = "Hold your RFID card near the reader to get started.";
     document.querySelector("#client-age").textContent = "";
     document.querySelector("#variant").textContent = "";
     document.querySelector("#client-name").textContent = "";
@@ -26,9 +26,9 @@ function scheduleIdleReset() {
 function showScanning(id) {
   panel.dataset.state = "scanning";
   mark.textContent = "CHECKING";
-  eyebrow.textContent = "Media detected";
+  eyebrow.textContent = "Card detected";
   headline.textContent = id;
-  detail.textContent = "Contacting access control...";
+  detail.textContent = "Checking your access...";
   client.hidden = true;
   document.querySelector("#last-scan").textContent = `Last scan: ${id}`;
 }
@@ -36,10 +36,12 @@ function showScanning(id) {
 function showResult(result) {
   const valid = result.valid === true;
   panel.dataset.state = valid ? "valid" : "denied";
-  mark.textContent = valid ? "ACCESS GRANTED" : "ACCESS DENIED";
-  eyebrow.textContent = result.validationCode || "Validation result";
+  mark.textContent = valid ? "GOOD TO GO" : "CARD NOT VALID";
+  eyebrow.textContent = valid ? "Access confirmed" : "Please contact customer service";
   headline.textContent = result.clientName || result.mediaIdentifier || "Unknown media";
-  detail.textContent = result.reason || (valid ? "Permission verified" : "No permission available");
+  detail.textContent = valid
+    ? "You're all set. Have a great day on the mountain!"
+    : "Please visit customer service so we can resolve this before you head up.";
   document.querySelector("#client-age").textContent = result.clientAge == null ? "" : `${result.clientAge} years`;
   document.querySelector("#variant").textContent = result.variantName || "";
   document.querySelector("#client-name").textContent = result.clientName || "";
@@ -61,12 +63,11 @@ function showError(message) {
 }
 
 fetch("/config").then(response => response.json()).then(config => {
-  document.querySelector("#device").textContent = config.controlDevice || "";
+  document.querySelector("#device").textContent = config.hostname || "——";
   if (config.logo) {
     const logo = document.querySelector("#logo");
     logo.src = config.logo;
     logo.hidden = false;
-    document.querySelector("#brand").hidden = true;
   }
 }).catch(() => showError("Kiosk configuration is unavailable"));
 
@@ -84,7 +85,7 @@ function connectEvents() {
       panel.dataset.state = "scanning";
       mark.textContent = "CHECKING";
       eyebrow.textContent = "Reconnected";
-      headline.textContent = "Listening for scans";
+      headline.textContent = "Ready for your card";
       detail.textContent = "Connection restored.";
     }
   };

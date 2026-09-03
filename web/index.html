@@ -8,18 +8,21 @@
 </head>
 <body>
   <main class="gate-shell">
-    <header class="masthead"><img id="logo" alt="" hidden><span id="brand">mtnOS</span><span class="device" id="device"></span></header>
+    <header class="masthead">
+      <img id="logo" src="/logo.png" alt="Rabbit Hill Snow Resort" class="logo">
+      <div class="gate-label"><span class="pulse"></span><span>Access gate</span><span class="device" id="device">&mdash;&mdash;</span></div>
+    </header>
     <section class="status-panel" id="status-panel" data-state="idle" aria-live="polite">
-      <div class="status-mark" id="status-mark">READY</div>
-      <p class="eyebrow" id="eyebrow">Present access media</p>
-      <h1 id="headline">Scan your RFID media</h1>
-      <p class="detail" id="detail">Waiting for a scan</p>
+      <div class="status-topline"><span class="status-mark" id="status-mark">READY</span><span class="status-rule"></span></div>
+      <p class="eyebrow" id="eyebrow">Present your access card</p>
+      <h1 id="headline">Scan to access the mountain.</h1>
+      <p class="detail" id="detail">Hold your RFID card near the reader to get started.</p>
       <div class="client" id="client" hidden>
         <img id="client-photo" alt="Client photo" hidden>
         <div><strong id="client-name"></strong><span id="client-age"></span><span id="variant"></span></div>
       </div>
     </section>
-    <footer><span id="last-scan">No scan yet</span><span>Virtual Gate</span></footer>
+    <footer><span id="last-scan">&mdash;&mdash;</span><span>Rabbit Hill Snow Resort</span></footer>
   </main>
   <script src="/app.js"></script>
 </body>
