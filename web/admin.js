@@ -83,6 +83,6 @@ form.addEventListener("submit", async event => {
   message.className = "";
   const response = await fetch("/admin/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) });
   const result = await response.json();
-  message.textContent = response.ok ? "Saved. Restart the server to apply connection changes." : result.error;
+  message.textContent = response.ok ? "Saved. Changes are active." : result.error;
   message.className = response.ok ? "success" : "error";
 });

@@ -47,6 +47,37 @@ class MtnOSClient:
         self._context = context
         self._authorization: str | None = None
         self._logged_in_at: float | None = None
+        self._credentials: tuple[str | None, str | None] | None = None
+
+    def configure(
+        self,
+        base_url: str,
+        *,
+        timeout: float,
+        token_refresh_hours: float,
+        context: ssl.SSLContext | None,
+        context_key: tuple[object, ...],
+        credentials: tuple[str | None, str | None],
+    ) -> None:
+        """Apply runtime settings and discard authentication when its identity changes."""
+        normalized_url = base_url.rstrip("/")
+        if (
+            normalized_url != self.base_url
+            or context_key != getattr(self, "_context_key", None)
+            or credentials != self._credentials
+        ):
+            self.base_url = normalized_url
+            self._context = context
+            self._context_key = context_key
+            handlers: list[Any] = [urllib.request.HTTPCookieProcessor(self._cookies)]
+            if context is not None:
+                handlers.insert(0, urllib.request.HTTPSHandler(context=context))
+            self._opener = urllib.request.build_opener(*handlers)
+            self._authorization = None
+            self._logged_in_at = None
+        self.timeout = timeout
+        self.token_refresh_seconds = token_refresh_hours * 60 * 60
+        self._credentials = credentials
 
     @property
     def authenticated(self) -> bool:

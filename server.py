@@ -91,6 +91,23 @@ def save_config(config: dict) -> None:
     temporary_path.replace(CONFIG_PATH)
 
 
+class RuntimeConfig:
+    def __init__(self, config: dict) -> None:
+        self._config = dict(config)
+        self._lock = threading.RLock()
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            return dict(self._config)
+
+    def update(self, updates: dict) -> dict:
+        with self._lock:
+            candidate = {**self._config, **updates}
+            save_config(candidate)
+            self._config = candidate
+            return dict(candidate)
+
+
 def validate_config_payload(payload: object, current: dict) -> dict:
     if not isinstance(payload, dict):
         raise ValueError("config must be an object")
@@ -224,11 +241,9 @@ def validate_scanned_media(
 
 
 def scan_loop(
-    config: dict,
+    runtime_config: RuntimeConfig,
     state: State,
     client: MtnOSClient,
-    username: str | None,
-    password: str | None,
 ) -> None:
     for raw_value in sys.stdin:
         media_identifier = normalize_media_identifier(raw_value)
@@ -237,6 +252,17 @@ def scan_loop(
         LOG.info("Validating scanned media identifier %s", media_identifier)
         state.publish({"type": "scanning", "mediaIdentifier": media_identifier})
         try:
+            config = runtime_config.snapshot()
+            username = config.get("mtnos-username")
+            password = config.get("mtnos-password")
+            client.configure(
+                config["mtnos-server"],
+                timeout=float(config.get("request-timeout-seconds", 10)),
+                token_refresh_hours=float(config.get("auth-refresh-hours", 12)),
+                context=ssl_context_from_config(config),
+                context_key=(config.get("tls-verify", True), config.get("tls-ca-file", "")),
+                credentials=(username, password),
+            )
             use_authentication = False
             if username and password:
                 try:
@@ -258,7 +284,7 @@ def scan_loop(
 
 class Handler(BaseHTTPRequestHandler):
     state: State
-    config: dict
+    runtime_config: RuntimeConfig
 
     def handle_one_request(self) -> None:
         try:
@@ -275,7 +301,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/health":
             self.send_json({"status": "ok"})
         elif path == "/admin/config":
-            self.send_json({"categories": CONFIG_CATEGORIES, "fields": CONFIG_FIELDS, "values": self.config})
+            self.send_json({"categories": CONFIG_CATEGORIES, "fields": CONFIG_FIELDS, "values": self.runtime_config.snapshot()})
         else:
             self.send_static(path)
 
@@ -287,11 +313,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(length))
-            updates = validate_config_payload(payload, self.config)
-            candidate = {**self.config, **updates}
-            save_config(candidate)
-            self.config.update(updates)
-            self.send_json({"status": "saved", "values": self.config})
+            current = self.runtime_config.snapshot()
+            updates = validate_config_payload(payload, current)
+            values = self.runtime_config.update(updates)
+            self.send_json({"status": "saved", "values": values})
         except (ValueError, json.JSONDecodeError, OSError) as error:
             self.send_json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
 
@@ -344,6 +369,7 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     config = load_config()
+    runtime_config = RuntimeConfig(config)
     client = MtnOSClient(
         config["mtnos-server"],
         timeout=float(config.get("request-timeout-seconds", 10)),
@@ -352,6 +378,14 @@ def main() -> None:
     )
     username = config.get("mtnos-username")
     password = config.get("mtnos-password")
+    client.configure(
+        config["mtnos-server"],
+        timeout=float(config.get("request-timeout-seconds", 10)),
+        token_refresh_hours=float(config.get("auth-refresh-hours", 12)),
+        context=ssl_context_from_config(config),
+        context_key=(config.get("tls-verify", True), config.get("tls-ca-file", "")),
+        credentials=(username, password),
+    )
     if username and password:
         LOG.info("mtnOS credentials configured; attempting initial login")
         try:
@@ -363,10 +397,10 @@ def main() -> None:
         LOG.warning("mtnOS credentials are not configured; using direct validation")
     state = State()
     Handler.state = state
-    Handler.config = config
+    Handler.runtime_config = runtime_config
     threading.Thread(
         target=scan_loop,
-        args=(config, state, client, username, password),
+        args=(runtime_config, state, client),
         daemon=True,
     ).start()
     address = (LISTEN_HOST, LISTEN_PORT)

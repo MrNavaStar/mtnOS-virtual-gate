@@ -32,7 +32,7 @@ chromium --kiosk --noerrdialogs --disable-infobars http://localhost:8080
 ```
 
 Open `http://localhost:8080/admin` to edit the typed configuration in a browser.
-Saving updates `config.toml`; restart the server afterward to apply changes.
+Saving updates `config.toml` and applies the changes to the running server.
 
 The browser receives results over Server-Sent Events. `/health` is available for a service monitor.
 
