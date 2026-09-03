@@ -69,6 +69,14 @@ class State:
             client.put(payload)
 
 
+def normalize_media_identifier(raw_value: str) -> str:
+    """Normalize scanner input before sending it to mtnOS."""
+    normalized = raw_value.strip()
+    while normalized.startswith(";"):
+        normalized = normalized[1:].lstrip()
+    return normalized
+
+
 def client_id_from_photo_url(photo_url: str | None) -> str | None:
     if not photo_url:
         return None
@@ -141,7 +149,7 @@ def scan_loop(
     password: str | None,
 ) -> None:
     for raw_value in sys.stdin:
-        media_identifier = raw_value.strip()
+        media_identifier = normalize_media_identifier(raw_value)
         if not media_identifier:
             continue
         LOG.info("Validating scanned media identifier %s", media_identifier)
