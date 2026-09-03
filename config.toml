@@ -1,5 +1,5 @@
 # Set mntos-server to the base URL of the mtnOS API.
-mntos-server = "https://HOST"
+mtnos-server = "https://HOST"
 mtnos-username = "USERNAME"
 mtnos-password = "PASSWORD"
 control-device = "GATE_IP"

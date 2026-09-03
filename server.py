@@ -40,7 +40,7 @@ def ssl_context_from_config(config: dict) -> ssl.SSLContext | None:
 def load_config() -> dict:
     with CONFIG_PATH.open("rb") as config_file:
         config = tomllib.load(config_file)
-    required = ("mntos-server", "control-device")
+    required = ("mtnos-server", "control-device")
     missing = [key for key in required if not config.get(key)]
     if missing:
         raise ValueError(f"Missing config values: {', '.join(missing)}")
@@ -95,7 +95,7 @@ def validate_media(media_identifier: str, config: dict) -> dict:
         "deviceIdentifier": config["control-device"],
         "mediaIdentifier": media_identifier,
     })
-    url = f"{config['mntos-server'].rstrip('/')}/api/access-control/v2/validation/?{query}"
+    url = f"{config['mtnos-server'].rstrip('/')}/api/access-control/v2/validation/?{query}"
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     timeout = float(config.get("request-timeout-seconds", 10))
     context = ssl_context_from_config(config)
@@ -261,8 +261,8 @@ def main() -> None:
         token_refresh_hours=float(config.get("auth-refresh-hours", 12)),
         context=ssl_context_from_config(config),
     )
-    username = config.get("mntos-username")
-    password = config.get("mntos-password")
+    username = config.get("mtnos-username")
+    password = config.get("mtnos-password")
     if username and password:
         LOG.info("mtnOS credentials configured; attempting initial login")
         try:
