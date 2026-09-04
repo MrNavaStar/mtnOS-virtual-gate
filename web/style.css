@@ -23,6 +23,12 @@ body:before { content: ''; position: fixed; inset: 0; pointer-events: none; opac
 .gate-label { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 .device { padding-left: 12px; border-left: 1px solid var(--line); color: var(--muted); font-size: .68rem; font-weight: 500; letter-spacing: .08em; }
 .pulse { width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 5px #61788720; }
+.gate-label[data-state="authenticated"] { color: var(--green); }
+.gate-label[data-state="authenticated"] .pulse { box-shadow: 0 0 0 5px #138d7720; }
+.gate-label[data-state="unauthenticated"], .gate-label[data-state="error"] { color: var(--red); }
+.gate-label[data-state="unauthenticated"] .pulse, .gate-label[data-state="error"] .pulse { box-shadow: 0 0 0 5px #c94d4520; }
+.gate-label[data-state="scanning"] { color: var(--amber); }
+.gate-label[data-state="scanning"] .pulse { box-shadow: 0 0 0 5px #c2791820; }
 .gate-label[data-state="valid"] { color: var(--green); }
 .gate-label[data-state="valid"] .pulse { box-shadow: 0 0 0 5px #138d7720; }
 .gate-label[data-state="denied"], .gate-label[data-state="error"] { color: var(--red); }

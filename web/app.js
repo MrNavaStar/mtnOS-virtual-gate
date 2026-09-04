@@ -24,7 +24,7 @@ function scheduleIdleReset() {
 }
 
 function showScanning() {
-  setGateStatus("scanning", "Checking");
+  setGateStatus("scanning", "Access Gate (checking)");
   panel.dataset.state = "scanning";
   mark.textContent = "CHECKING";
   eyebrow.textContent = "Card detected";
@@ -34,7 +34,6 @@ function showScanning() {
 
 function showResult(result) {
   const valid = result.valid === true;
-  setGateStatus(valid ? "valid" : "denied", valid ? "Authenticated" : "Not authenticated");
   panel.dataset.state = valid ? "valid" : "denied";
   mark.textContent = valid ? "GOOD TO GO" : "CARD NOT VALID";
   eyebrow.textContent = valid ? "Access confirmed" : "Please contact customer service";
@@ -92,7 +91,13 @@ function connectEvents() {
       showScanning();
       if (idleTimer) clearTimeout(idleTimer);
     }
-    if (event.type === "validation") showResult(event.result);
+    if (event.type === "validation") {
+      setGateStatus(
+        event.authenticated === true ? "authenticated" : "unauthenticated",
+        event.authenticated === true ? "Access Gate" : "Access Gate (not authenticated)",
+      );
+      showResult(event.result);
+    }
     if (event.type === "error") showError(event.message);
   };
 
