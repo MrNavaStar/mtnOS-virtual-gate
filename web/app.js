@@ -24,7 +24,6 @@ function scheduleIdleReset() {
 }
 
 function showScanning() {
-  setGateStatus("scanning", "Access Gate (checking)");
   panel.dataset.state = "scanning";
   mark.textContent = "CHECKING";
   eyebrow.textContent = "Card detected";
@@ -47,7 +46,7 @@ function showResult(result) {
 }
 
 function showError() {
-  setGateStatus("error", "Unavailable");
+  setGateStatus("unauthenticated", "Not authenticated");
   panel.dataset.state = "error";
   mark.textContent = "UNAVAILABLE";
   eyebrow.textContent = "Validation request failed";
@@ -75,7 +74,6 @@ function connectEvents() {
   events = new EventSource("/events");
   events.onopen = () => {
     if (document.querySelector("#status-panel").dataset.state === "error") {
-      setGateStatus("idle", "Awaiting scan");
       const panel = document.querySelector("#status-panel");
       panel.dataset.state = "scanning";
       mark.textContent = "CHECKING";
@@ -94,7 +92,7 @@ function connectEvents() {
     if (event.type === "validation") {
       setGateStatus(
         event.authenticated === true ? "authenticated" : "unauthenticated",
-        event.authenticated === true ? "Access Gate" : "Access Gate (not authenticated)",
+        event.authenticated === true ? "Authenticated" : "Not authenticated",
       );
       showResult(event.result);
     }

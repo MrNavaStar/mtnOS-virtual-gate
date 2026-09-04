@@ -27,14 +27,6 @@ body:before { content: ''; position: fixed; inset: 0; pointer-events: none; opac
 .gate-label[data-state="authenticated"] .pulse { box-shadow: 0 0 0 5px #138d7720; }
 .gate-label[data-state="unauthenticated"], .gate-label[data-state="error"] { color: var(--red); }
 .gate-label[data-state="unauthenticated"] .pulse, .gate-label[data-state="error"] .pulse { box-shadow: 0 0 0 5px #c94d4520; }
-.gate-label[data-state="scanning"] { color: var(--amber); }
-.gate-label[data-state="scanning"] .pulse { box-shadow: 0 0 0 5px #c2791820; }
-.gate-label[data-state="valid"] { color: var(--green); }
-.gate-label[data-state="valid"] .pulse { box-shadow: 0 0 0 5px #138d7720; }
-.gate-label[data-state="denied"], .gate-label[data-state="error"] { color: var(--red); }
-.gate-label[data-state="denied"] .pulse, .gate-label[data-state="error"] .pulse { box-shadow: 0 0 0 5px #c94d4520; }
-.gate-label[data-state="scanning"] { color: var(--amber); }
-.gate-label[data-state="scanning"] .pulse { box-shadow: 0 0 0 5px #c2791820; }
 .status-panel { height: clamp(360px, 58vh, 560px); margin: auto 0; padding: clamp(52px, 10vh, 120px) clamp(25px, 7vw, 95px); border: 1px solid var(--line); border-radius: 60px 0 60px 0; background: #fff; box-shadow: 0 18px 45px #14506e12; transition: color .25s, border-color .25s; }
 .status-topline { display: flex; align-items: center; gap: 18px; }
 .status-mark { color: var(--green); font: 700 clamp(2rem, 5vw, 4.5rem)/.9 'Barlow Condensed', sans-serif; letter-spacing: .02em; }
