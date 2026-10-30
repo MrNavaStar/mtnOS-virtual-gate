@@ -263,8 +263,16 @@ def validate_scanned_media(
 def scanner_input() -> Iterator[str]:
     while True:
         try:
-            with RFID_SCANNER_PATH.open(encoding="utf-8") as scanner:
-                yield from scanner
+            with RFID_SCANNER_PATH.open("rb") as scanner:
+                for raw_line in scanner:
+                    try:
+                        yield raw_line.decode("utf-8")
+                    except UnicodeDecodeError as error:
+                        LOG.warning(
+                            "Ignoring invalid UTF-8 byte(s) in RFID scanner input at byte %d",
+                            error.start,
+                        )
+                        yield raw_line.decode("utf-8", errors="ignore")
             LOG.warning("RFID scanner input at %s ended; reopening", RFID_SCANNER_PATH)
         except OSError as error:
             LOG.warning("Could not read RFID scanner at %s; retrying: %s", RFID_SCANNER_PATH, error)
