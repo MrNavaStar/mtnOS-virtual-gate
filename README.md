@@ -4,7 +4,9 @@ A small Raspberry Pi kiosk server that reads newline-terminated USB RFID scanner
 
 ## Configure
 
-Edit `config.toml`:
+On first run, the server creates `~/.mtnos-virtual-gate/config.toml` with
+example values. Replace the placeholders with your settings, either in that
+file or at `http://localhost:8080/admin` after starting the server:
 
 ```toml
 mntos-server = "https://your-mtnos-host"
@@ -32,7 +34,8 @@ chromium --kiosk --noerrdialogs --disable-infobars http://localhost:8080
 ```
 
 Open `http://localhost:8080/admin` to edit the typed configuration in a browser.
-Saving updates `config.toml` and applies the changes to the running server.
+Saving updates `~/.mtnos-virtual-gate/config.toml` and applies the changes to
+the running server.
 
 The browser receives results over Server-Sent Events. `/health` is available for a service monitor.
 

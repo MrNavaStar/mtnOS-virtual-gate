@@ -21,13 +21,25 @@ import tomllib
 from mtnos_client import MtnOSAuthenticationError, MtnOSClient, MtnOSClientError
 
 ROOT = Path(__file__).parent
-CONFIG_PATH = ROOT / "config.toml"
+CONFIG_PATH = Path.home() / ".mtnos-virtual-gate" / "config.toml"
 STATIC_DIR = ROOT / "web"
 LOG = logging.getLogger("virtual-gate")
 LISTEN_HOST = "0.0.0.0"
 LISTEN_PORT = 8080
 RFID_SCANNER_PATH = Path("/dev/rfid-scanner")
 LOGO = ""
+DEFAULT_CONFIG = """\
+# Set mtnos-server to the base URL of the mtnOS API.
+mtnos-server = "https://HOST"
+mtnos-username = "USERNAME"
+mtnos-password = "PASSWORD"
+control-device = "GATE_IP"
+# Set to false when the mtnOS server uses a self-signed certificate.
+tls-verify = false
+tls-ca-file = ""
+request-timeout-seconds = 10
+auth-refresh-hours = 12
+"""
 
 CONFIG_FIELDS = {
     "mtnos-server": {"type": "string", "label": "mtnOS server", "secret": False},
@@ -67,6 +79,12 @@ def ssl_context_from_config(config: dict) -> ssl.SSLContext | None:
 
 
 def load_config() -> dict:
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with CONFIG_PATH.open("x", encoding="utf-8") as config_file:
+            config_file.write(DEFAULT_CONFIG)
+    except FileExistsError:
+        pass
     with CONFIG_PATH.open("rb") as config_file:
         config = tomllib.load(config_file)
     required = ("mtnos-server", "control-device")
