@@ -203,13 +203,27 @@ class MtnOSClient:
             data = json.dumps(body).encode("utf-8")
             headers["Content-Type"] = "application/json"
         request = urllib.request.Request(url, data=data, headers=headers, method=method)
-        target = urllib.parse.urlsplit(url).path
+        url_parts = urllib.parse.urlsplit(url)
+        target = url_parts.path
+        params = urllib.parse.parse_qsl(url_parts.query)
         try:
             with self._opener.open(request, timeout=self.timeout) as response:
-                LOG.info("mtnOS HTTP %s %s -> %s", method, target, response.status)
+                LOG.info(
+                    "mtnOS HTTP %s %s params=%s -> %s",
+                    method,
+                    target,
+                    params,
+                    response.status,
+                )
                 raw = response.read()
         except urllib.error.HTTPError as error:
-            LOG.warning("mtnOS HTTP %s %s -> %s", method, target, error.code)
+            LOG.warning(
+                "mtnOS HTTP %s %s params=%s -> %s",
+                method,
+                target,
+                params,
+                error.code,
+            )
             if error.code in (401, 403):
                 self._authorization = None
                 self._logged_in_at = None
@@ -221,7 +235,13 @@ class MtnOSClient:
             ) from error
         except urllib.error.URLError as error:
             reason = str(error.reason)
-            LOG.error("mtnOS HTTP %s %s failed: %s", method, target, reason)
+            LOG.error(
+                "mtnOS HTTP %s %s params=%s failed: %s",
+                method,
+                target,
+                params,
+                reason,
+            )
             raise MtnOSClientError(
                 f"{method} {target} failed with a network error: {reason}"
             ) from error

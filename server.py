@@ -215,13 +215,15 @@ def validate_media(media_identifier: str, config: dict) -> dict:
     try:
         with opener.open(request, timeout=timeout) as response:
             LOG.info(
-                "mtnOS HTTP GET /api/access-control/v2/validation/ -> %s",
+                "mtnOS HTTP GET /api/access-control/v2/validation/ params=%s -> %s",
+                urllib.parse.parse_qsl(query),
                 response.status,
             )
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         LOG.warning(
-            "mtnOS HTTP GET /api/access-control/v2/validation/ -> %s",
+            "mtnOS HTTP GET /api/access-control/v2/validation/ params=%s -> %s",
+            urllib.parse.parse_qsl(query),
             error.code,
         )
         raise
