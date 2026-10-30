@@ -1,6 +1,6 @@
 # mtnOS Virtual Gate
 
-A small Raspberry Pi kiosk server that reads newline-terminated USB RFID scanner input, validates each media identifier against mtnOS, and updates the connected browser immediately.
+A small Raspberry Pi kiosk server that reads newline-terminated USB RFID scanner input from `/dev/rfid-scanner`, validates each media identifier against mtnOS, and updates the connected browser immediately.
 
 ## Configure
 
@@ -15,7 +15,7 @@ control-device = "192.168.1.50"
 tls-verify = true
 ```
 
-The scanner must operate as a USB keyboard and append Enter after each scan. `mntos-server` is used as the API base URL and `control-device` is sent as `deviceIdentifier`. If the mtnOS instance uses a self-signed certificate, set `tls-verify = false` to trust it for local kiosk deployments.
+The scanner must be available at `/dev/rfid-scanner`, operate as a USB keyboard, prefix each ID with `;`, and append Enter after each scan. The server removes the prefix before validation and retries if the scanner device is temporarily unavailable. Ensure the service account can read the device. `mntos-server` is used as the API base URL and `control-device` is sent as `deviceIdentifier`. If the mtnOS instance uses a self-signed certificate, set `tls-verify = false` to trust it for local kiosk deployments.
 
 ## Run
 
@@ -73,11 +73,9 @@ WorkingDirectory=/home/pi/mtnOS-virtual-gate
 ExecStart=/usr/bin/python3 /home/pi/mtnOS-virtual-gate/server.py
 Restart=always
 RestartSec=3
-StandardInput=tty
-TTYPath=/dev/ttyUSB0
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Enable it with `sudo systemctl enable --now mtnos-gate`. If the scanner is configured as a keyboard device rather than a serial/TTY input, run the server in the desktop session so the scanner's keystrokes are directed to its terminal, or adapt the input source to the scanner's device node.
+Enable it with `sudo systemctl enable --now mtnos-gate`.

@@ -8,10 +8,11 @@ import logging
 import queue
 import socket
 import ssl
-import sys
 import threading
+import time
 import urllib.parse
 import urllib.request
+from collections.abc import Iterator
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -25,6 +26,7 @@ STATIC_DIR = ROOT / "web"
 LOG = logging.getLogger("virtual-gate")
 LISTEN_HOST = "0.0.0.0"
 LISTEN_PORT = 8080
+RFID_SCANNER_PATH = Path("/dev/rfid-scanner")
 LOGO = ""
 
 CONFIG_FIELDS = {
@@ -240,12 +242,23 @@ def validate_scanned_media(
         return result, True
 
 
+def scanner_input() -> Iterator[str]:
+    while True:
+        try:
+            with RFID_SCANNER_PATH.open(encoding="utf-8") as scanner:
+                yield from scanner
+            LOG.warning("RFID scanner input at %s ended; reopening", RFID_SCANNER_PATH)
+        except OSError as error:
+            LOG.warning("Could not read RFID scanner at %s; retrying: %s", RFID_SCANNER_PATH, error)
+        time.sleep(1)
+
+
 def scan_loop(
     runtime_config: RuntimeConfig,
     state: State,
     client: MtnOSClient,
 ) -> None:
-    for raw_value in sys.stdin:
+    for raw_value in scanner_input():
         media_identifier = normalize_media_identifier(raw_value)
         if not media_identifier:
             continue
