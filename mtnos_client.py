@@ -90,17 +90,8 @@ class MtnOSClient:
             and self._logged_in_at is not None
             and time.monotonic() - self._logged_in_at < self.token_refresh_seconds
         ):
-            LOG.info("mtnOS login skipped; existing authentication is still fresh")
             return True
-        if self._authorization is None:
-            LOG.info("mtnOS login starting; no authentication token is available")
-        else:
-            LOG.info("mtnOS login starting; authentication token requires refresh")
         self.login(username, password)
-        if self.authenticated:
-            LOG.info("mtnOS login succeeded")
-        else:
-            LOG.error("mtnOS login response did not contain an access token")
         return self.authenticated
 
     def login(
@@ -123,7 +114,6 @@ class MtnOSClient:
         }
         if extra_fields:
             payload.update(extra_fields)
-        LOG.info("Sending mtnOS login request")
         result = self._request(
             "POST",
             "/auth/realms/mtnos/protocol/openid-connect/token",
@@ -134,7 +124,6 @@ class MtnOSClient:
             if token:
                 self._authorization = f"{result.get('token_type', 'Bearer')} {token}"
                 self._logged_in_at = time.monotonic()
-                LOG.info("mtnOS login response contained an access token")
         return result
 
     def fetch_client_medias(
@@ -179,26 +168,12 @@ class MtnOSClient:
         number. The replacement endpoint requires both serial numbers, so the
         client's media list is used to resolve them.
         """
-        LOG.info("Resolving media serials before activation for client %s and target media %s", client_id, media_id)
         medias = self.fetch_client_medias(client_id)
         records = self._media_records(medias)
-        LOG.info("Retrieved %d media records for activation", len(records))
         target = self._find_media(records, media_id)
         current = self._find_current_media(records, current_media_id, target)
         target_serial = self._media_serial(target)
         current_serial = self._media_serial(current)
-        LOG.info(
-            "Selected active media for activation: id=%s serial=%s active=%s",
-            current.get("id"),
-            current_serial,
-            current.get("active"),
-        )
-        LOG.info(
-            "Sending media activation request for client %s: current media %s -> target media %s",
-            client_id,
-            current_serial,
-            target_serial,
-        )
         return self._request(
             "POST",
             "/api/access-control/v1/replacement/by-media",
@@ -228,32 +203,35 @@ class MtnOSClient:
             data = json.dumps(body).encode("utf-8")
             headers["Content-Type"] = "application/json"
         request = urllib.request.Request(url, data=data, headers=headers, method=method)
-        LOG.info("mtnOS request started: %s %s (authenticated=%s)", method, path, bool(self._authorization))
+        target = urllib.parse.urlsplit(url).path
         try:
             with self._opener.open(request, timeout=self.timeout) as response:
+                LOG.info("mtnOS HTTP %s %s -> %s", method, target, response.status)
                 raw = response.read()
-                LOG.info("mtnOS request succeeded: %s %s (status=%s, bytes=%d)", method, path, response.status, len(raw))
         except urllib.error.HTTPError as error:
-            detail = error.read().decode("utf-8", errors="replace")
-            LOG.error("mtnOS request failed: %s %s (status=%s): %s", method, path, error.code, detail)
+            LOG.warning("mtnOS HTTP %s %s -> %s", method, target, error.code)
             if error.code in (401, 403):
                 self._authorization = None
                 self._logged_in_at = None
                 raise MtnOSAuthenticationError(
-                    f"{method} {path} rejected authentication: {detail}"
+                    f"{method} {target} rejected authentication with HTTP {error.code}"
                 ) from error
-            raise MtnOSClientError(f"{method} {path} failed: {detail}") from error
+            raise MtnOSClientError(
+                f"{method} {target} failed with HTTP {error.code}"
+            ) from error
         except urllib.error.URLError as error:
-            detail = str(error)
-            LOG.error("mtnOS request failed: %s %s (network error): %s", method, path, detail)
-            raise MtnOSClientError(f"{method} {path} failed: {detail}") from error
+            reason = str(error.reason)
+            LOG.error("mtnOS HTTP %s %s failed: %s", method, target, reason)
+            raise MtnOSClientError(
+                f"{method} {target} failed with a network error: {reason}"
+            ) from error
         if not raw:
             return None
         try:
             return json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            LOG.error("mtnOS request returned invalid JSON: %s %s", method, path)
-            raise MtnOSClientError(f"{method} {path} returned invalid JSON") from error
+            LOG.error("mtnOS HTTP %s %s returned invalid JSON", method, target)
+            raise MtnOSClientError(f"{method} {target} returned invalid JSON") from error
 
     @staticmethod
     def _media_records(payload: Any) -> list[Mapping[str, Any]]:

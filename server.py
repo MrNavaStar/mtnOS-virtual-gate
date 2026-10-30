@@ -10,6 +10,7 @@ import socket
 import ssl
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Iterator
@@ -198,7 +199,6 @@ def client_id_from_photo_url(photo_url: str | None) -> str | None:
 
 def validate_media(media_identifier: str, config: dict) -> dict:
     """Validate without authentication, preserving the original gate behavior."""
-    LOG.info("Starting direct media validation for %s", media_identifier)
     query = urllib.parse.urlencode({
         "deviceIdentifier": config["control-device"],
         "mediaIdentifier": media_identifier,
@@ -212,10 +212,19 @@ def validate_media(media_identifier: str, config: dict) -> dict:
         if context is not None
         else urllib.request.build_opener()
     )
-    with opener.open(request, timeout=timeout) as response:
-        result = json.loads(response.read().decode("utf-8"))
-        LOG.info("Direct media validation succeeded for %s: validationCode=%s", media_identifier, result.get("validationCode"))
-        return result
+    try:
+        with opener.open(request, timeout=timeout) as response:
+            LOG.info(
+                "mtnOS HTTP GET /api/access-control/v2/validation/ -> %s",
+                response.status,
+            )
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        LOG.warning(
+            "mtnOS HTTP GET /api/access-control/v2/validation/ -> %s",
+            error.code,
+        )
+        raise
 
 
 def validate_scanned_media(
@@ -226,19 +235,14 @@ def validate_scanned_media(
     use_authentication: bool,
 ) -> tuple[dict, bool]:
     if not use_authentication:
-        LOG.info("Validating %s without mtnOS authentication", media_identifier)
         return validate_media(media_identifier, config), False
     try:
-        LOG.info("Validating %s with mtnOS authentication", media_identifier)
         result = client.validate_media(config["control-device"], media_identifier)
     except MtnOSAuthenticationError:
         LOG.warning("mtnOS authentication was rejected; using direct validation")
         return validate_media(media_identifier, config), False
     if result.get("validationCode") != "MEDIA_INACTIVE":
-        LOG.info("Authenticated validation completed for %s: validationCode=%s", media_identifier, result.get("validationCode"))
         return result, True
-
-    LOG.info("Media %s is inactive; attempting activation", media_identifier)
 
     client_id = client_id_from_photo_url(result.get("clientPhotoUrl"))
     media_id = result.get("mediaId")
@@ -248,15 +252,13 @@ def validate_scanned_media(
 
     try:
         client.set_active_media(client_id, str(media_id))
-        LOG.info("Media activation request succeeded for %s; validating again", media_identifier)
         result = client.validate_media(config["control-device"], media_identifier)
-        LOG.info("Post-activation validation completed for %s: validationCode=%s", media_identifier, result.get("validationCode"))
-        return result
+        return result, True
     except MtnOSAuthenticationError:
         LOG.warning("mtnOS authentication expired during activation; using direct validation")
         return validate_media(media_identifier, config), False
     except MtnOSClientError:
-        LOG.exception("Could not silently activate inactive media %s", media_identifier)
+        LOG.exception("Could not silently activate inactive media")
         return result, True
 
 
@@ -267,11 +269,7 @@ def scanner_input() -> Iterator[str]:
                 for raw_line in scanner:
                     try:
                         yield raw_line.decode("utf-8")
-                    except UnicodeDecodeError as error:
-                        LOG.warning(
-                            "Ignoring invalid UTF-8 byte(s) in RFID scanner input at byte %d",
-                            error.start,
-                        )
+                    except UnicodeDecodeError:
                         yield raw_line.decode("utf-8", errors="ignore")
             LOG.warning("RFID scanner input at %s ended; reopening", RFID_SCANNER_PATH)
         except OSError as error:
@@ -288,7 +286,6 @@ def scan_loop(
         media_identifier = normalize_media_identifier(raw_value)
         if not media_identifier:
             continue
-        LOG.info("Validating scanned media identifier %s", media_identifier)
         state.publish({"type": "scanning", "mediaIdentifier": media_identifier})
         try:
             config = runtime_config.snapshot()
