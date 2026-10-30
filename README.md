@@ -27,7 +27,9 @@ Python 3.11 or newer is required. The server listens on port `8080` by default:
 python3 server.py
 ```
 
-Open `http://localhost:8080` in Chromium. For a fullscreen kiosk session:
+Open `http://localhost:8080` in Chromium to display the gate status page.
+Open `http://localhost:8080/admin` to edit the configuration. For a fullscreen
+kiosk session:
 
 ```sh
 chromium --kiosk --noerrdialogs --disable-infobars http://localhost:8080

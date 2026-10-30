@@ -372,7 +372,11 @@ class Handler(BaseHTTPRequestHandler):
             self.state.unsubscribe(client)
 
     def send_static(self, path: str) -> None:
-        relative_path = {"/status": "index.html", "/": "admin.html"}.get(path, path.removeprefix("/"))
+        relative_path = {
+            "/": "index.html",
+            "/status": "index.html",
+            "/admin": "admin.html",
+        }.get(path, path.removeprefix("/"))
         file_path = (STATIC_DIR / relative_path).resolve()
         if STATIC_DIR not in file_path.parents or not file_path.is_file():
             self.send_error(HTTPStatus.NOT_FOUND)
