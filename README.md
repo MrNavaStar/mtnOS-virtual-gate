@@ -17,7 +17,7 @@ control-device = "192.168.1.50"
 tls-verify = true
 ```
 
-The scanner must be available at `/dev/rfid-scanner`, operate as a USB keyboard, prefix each ID with `;`, and append Enter after each scan. The server removes the prefix before validation and retries if the scanner device is temporarily unavailable. Ensure the service account can read the device. `mntos-server` is used as the API base URL and `control-device` is sent as `deviceIdentifier`. If the mtnOS instance uses a self-signed certificate, set `tls-verify = false` to trust it for local kiosk deployments.
+The scanner must operate as a USB keyboard and be available at `/dev/rfid-scanner`. For Linux input-event devices, point that path to the scanner's `/dev/input/event*` node; the server decodes its key events into scans. The scanner should prefix each ID with `;` and append Enter after each scan. The server removes the prefix before validation and retries if the scanner device is temporarily unavailable. Ensure the service account can read the device. `mntos-server` is used as the API base URL and `control-device` is sent as `deviceIdentifier`. If the mtnOS instance uses a self-signed certificate, set `tls-verify = false` to trust it for local kiosk deployments.
 
 ## Run
 

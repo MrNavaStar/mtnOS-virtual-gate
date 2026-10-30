@@ -6,8 +6,10 @@ from __future__ import annotations
 import json
 import logging
 import queue
+import re
 import socket
 import ssl
+import struct
 import threading
 import time
 import urllib.error
@@ -28,6 +30,32 @@ LOG = logging.getLogger("virtual-gate")
 LISTEN_HOST = "0.0.0.0"
 LISTEN_PORT = 8080
 RFID_SCANNER_PATH = Path("/dev/rfid-scanner")
+INPUT_EVENT = struct.Struct("@llHHi")
+EV_KEY = 1
+KEY_ENTER = 28
+KEY_BACKSPACE = 14
+KEY_LEFTSHIFT = 42
+KEY_RIGHTSHIFT = 54
+KEY_CAPSLOCK = 58
+SCANNER_KEY_CHARACTERS = {
+    2: "1",
+    3: "2",
+    4: "3",
+    5: "4",
+    6: "5",
+    7: "6",
+    8: "7",
+    9: "8",
+    10: "9",
+    11: "0",
+    18: "e",
+    30: "a",
+    32: "d",
+    33: "f",
+    39: ";",
+    46: "c",
+    48: "b",
+}
 LOGO = ""
 DEFAULT_CONFIG = """\
 # Set mtnos-server to the base URL of the mtnOS API.
@@ -183,7 +211,56 @@ def normalize_media_identifier(raw_value: str) -> str:
     normalized = raw_value.strip()
     while normalized.startswith(";"):
         normalized = normalized[1:].lstrip()
-    return normalized
+    return normalized.upper()
+
+
+def evdev_scanner_input(scanner) -> Iterator[str]:
+    """Translate Linux evdev keyboard events into newline-terminated scans."""
+    characters: list[str] = []
+    shift_pressed = False
+    caps_lock = False
+
+    while True:
+        event_data = scanner.read(INPUT_EVENT.size)
+        if not event_data:
+            return
+        while len(event_data) < INPUT_EVENT.size:
+            remainder = scanner.read(INPUT_EVENT.size - len(event_data))
+            if not remainder:
+                LOG.warning("Incomplete event from RFID scanner; reopening")
+                return
+            event_data += remainder
+
+        _, _, event_type, code, value = INPUT_EVENT.unpack(event_data)
+        if event_type != EV_KEY:
+            continue
+        if code in (KEY_LEFTSHIFT, KEY_RIGHTSHIFT):
+            shift_pressed = value != 0
+            continue
+        if value != 1:
+            continue
+        if code == KEY_CAPSLOCK:
+            caps_lock = not caps_lock
+        elif code == KEY_BACKSPACE:
+            if characters:
+                characters.pop()
+        elif code == KEY_ENTER:
+            if characters:
+                yield "".join(characters)
+                characters.clear()
+        elif code in SCANNER_KEY_CHARACTERS:
+            character = SCANNER_KEY_CHARACTERS[code]
+            if character.isalpha() and shift_pressed != caps_lock:
+                character = character.upper()
+            characters.append(character)
+
+
+def text_scanner_input(scanner) -> Iterator[str]:
+    for raw_line in scanner:
+        try:
+            yield raw_line.decode("utf-8")
+        except UnicodeDecodeError:
+            yield raw_line.decode("utf-8", errors="ignore")
 
 
 def client_id_from_photo_url(photo_url: str | None) -> str | None:
@@ -268,11 +345,11 @@ def scanner_input() -> Iterator[str]:
     while True:
         try:
             with RFID_SCANNER_PATH.open("rb") as scanner:
-                for raw_line in scanner:
-                    try:
-                        yield raw_line.decode("utf-8")
-                    except UnicodeDecodeError:
-                        yield raw_line.decode("utf-8", errors="ignore")
+                resolved_path = RFID_SCANNER_PATH.resolve()
+                if re.fullmatch(r"event\d+", resolved_path.name):
+                    yield from evdev_scanner_input(scanner)
+                else:
+                    yield from text_scanner_input(scanner)
             LOG.warning("RFID scanner input at %s ended; reopening", RFID_SCANNER_PATH)
         except OSError as error:
             LOG.warning("Could not read RFID scanner at %s; retrying: %s", RFID_SCANNER_PATH, error)
